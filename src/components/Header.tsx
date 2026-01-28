@@ -2,7 +2,12 @@ import { Menu, X } from "lucide-react";
 import { useState } from "react";
 import { motion, AnimatePresence } from "motion/react";
 
-export function Header() {
+// Define the interface for your props
+interface HeaderProps {
+  onSignIn: () => void;
+}
+
+export function Header({ onSignIn }: HeaderProps) {
   const [isMenuOpen, setIsMenuOpen] = useState(false);
 
   const navItems = [
@@ -17,15 +22,14 @@ export function Header() {
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
         <div className="flex justify-between items-center h-16 md:h-20">
           {/* Logo */}
-          <div className="flex items-center">
-            <div className="flex items-center gap-2">
-              <div className="w-8 h-8 bg-[#18392b] rounded-lg flex items-center justify-center">
-                <span className="text-white text-lg">S</span>
-              </div>
-              <span className="text-xl text-[#18392b]">Signify</span>
+          <div className="flex items-center gap-2">
+            <div className="w-8 h-8 bg-[#18392b] rounded-lg flex items-center justify-center">
+              <span className="text-white text-lg">S</span>
             </div>
+            <span className="text-xl font-semibold text-[#18392b]">Signify</span>
           </div>
 
+          {/* Desktop Nav */}
           <nav className="hidden md:flex items-center gap-8">
             {navItems.map((item) => (
               <a
@@ -36,14 +40,16 @@ export function Header() {
                 {item.label}
               </a>
             ))}
-            <a
-              href="#contact"
+
+            <button
+              onClick={onSignIn}
               className="bg-[#18392b] text-white px-6 py-2.5 rounded-lg hover:bg-[#234a39] transition-colors"
             >
-              Request Demo
-            </a>
+              Sign In
+            </button>
           </nav>
 
+          {/* Mobile Menu Button */}
           <button
             onClick={() => setIsMenuOpen(!isMenuOpen)}
             className="md:hidden p-2"
@@ -58,13 +64,14 @@ export function Header() {
         </div>
       </div>
 
+      {/* Mobile Menu */}
       <AnimatePresence>
         {isMenuOpen && (
           <motion.div
             initial={{ opacity: 0, height: 0 }}
             animate={{ opacity: 1, height: "auto" }}
             exit={{ opacity: 0, height: 0 }}
-            className="md:hidden border-t border-gray-100 bg-white"
+            className="md:hidden border-t border-gray-100 bg-white overflow-hidden"
           >
             <nav className="px-4 py-4 space-y-3">
               {navItems.map((item) => (
@@ -77,13 +84,16 @@ export function Header() {
                   {item.label}
                 </a>
               ))}
-              <a
-                href="#contact"
-                className="block bg-[#18392b] text-white px-6 py-2.5 rounded-lg hover:bg-[#234a39] transition-colors text-center mt-4"
-                onClick={() => setIsMenuOpen(false)}
+
+              <button
+                onClick={() => {
+                  setIsMenuOpen(false);
+                  onSignIn();
+                }}
+                className="block bg-[#18392b] text-white px-6 py-2.5 rounded-lg text-center mt-4 w-full hover:bg-[#234a39]"
               >
-                Request Demo
-              </a>
+                Sign In
+              </button>
             </nav>
           </motion.div>
         )}
