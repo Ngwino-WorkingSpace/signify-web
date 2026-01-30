@@ -1,9 +1,10 @@
 import React, { useState } from 'react';
 import { Mail, Lock, ArrowRight, ShieldCheck, Globe, User, CheckCircle2 } from 'lucide-react';
 import { Logo } from './Logo';
+import { apiService, AuthResponse } from '../../services/api';
 
 interface AuthProps {
-  onLogin: () => void;
+  onLogin: (authData: AuthResponse) => void;
 }
 
 export const Login = ({ onLogin }: AuthProps) => {
@@ -15,14 +16,33 @@ export const Login = ({ onLogin }: AuthProps) => {
     fullName: '',
     organization: ''
   });
+  const [error, setError] = useState('');
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setIsLoading(true);
-    setTimeout(() => {
+    setError('');
+
+    try {
+      let authData;
+      if (isLogin) {
+        authData = await apiService.login({
+          email: formData.email,
+          password: formData.password
+        });
+      } else {
+        authData = await apiService.register({
+          email: formData.email,
+          password: formData.password,
+          name: formData.fullName
+        });
+      }
+      onLogin(authData);
+    } catch (err: any) {
+      setError(err.message || 'Authentication failed');
+    } finally {
       setIsLoading(false);
-      onLogin();
-    }, 1500);
+    }
   };
 
   const toggleMode = () => {
@@ -117,6 +137,11 @@ export const Login = ({ onLogin }: AuthProps) => {
             </div>
 
             <form onSubmit={handleSubmit} className="space-y-5">
+              {error && (
+                <div className="bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded-xl text-sm">
+                  {error}
+                </div>
+              )}
               {!isLogin && (
                 <div className="grid grid-cols-1 gap-5">
                   <div className="space-y-1.5">
@@ -126,6 +151,8 @@ export const Login = ({ onLogin }: AuthProps) => {
                       <input 
                         type="text" 
                         placeholder="John Doe"
+                        value={formData.fullName}
+                        onChange={(e) => setFormData({...formData, fullName: e.target.value})}
                         className="w-full bg-gray-50 border border-gray-100 rounded-2xl py-4 pl-12 pr-4 text-gray-900 focus:outline-none focus:ring-4 focus:ring-[#18392b]/5 focus:border-[#18392b] transition-all"
                         required
                       />
@@ -138,6 +165,8 @@ export const Login = ({ onLogin }: AuthProps) => {
                       <input 
                         type="text" 
                         placeholder="Ministry of Health"
+                        value={formData.organization}
+                        onChange={(e) => setFormData({...formData, organization: e.target.value})}
                         className="w-full bg-gray-50 border border-gray-100 rounded-2xl py-4 pl-12 pr-4 text-gray-900 focus:outline-none focus:ring-4 focus:ring-[#18392b]/5 focus:border-[#18392b] transition-all"
                         required
                       />
@@ -153,6 +182,8 @@ export const Login = ({ onLogin }: AuthProps) => {
                   <input 
                     type="email" 
                     placeholder="admin@organization.org"
+                    value={formData.email}
+                    onChange={(e) => setFormData({...formData, email: e.target.value})}
                     className="w-full bg-gray-50 border border-gray-100 rounded-2xl py-4 pl-12 pr-4 text-gray-900 focus:outline-none focus:ring-4 focus:ring-[#18392b]/5 focus:border-[#18392b] transition-all"
                     required
                   />
@@ -169,6 +200,8 @@ export const Login = ({ onLogin }: AuthProps) => {
                   <input 
                     type="password" 
                     placeholder="••••••••••••"
+                    value={formData.password}
+                    onChange={(e) => setFormData({...formData, password: e.target.value})}
                     className="w-full bg-gray-50 border border-gray-100 rounded-2xl py-4 pl-12 pr-4 text-gray-900 focus:outline-none focus:ring-4 focus:ring-[#18392b]/5 focus:border-[#18392b] transition-all"
                     required
                   />

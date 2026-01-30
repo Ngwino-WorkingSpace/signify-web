@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { 
   LayoutDashboard, 
   ClipboardList, 
@@ -10,9 +10,12 @@ import {
   X, 
   User,
   Search,
-  ChevronDown
+  ChevronDown,
+  Users,
+  MessageSquare
 } from 'lucide-react';
 import { Logo } from './Logo';
+import { apiService } from '../../services/api';
 
 interface SidebarItemProps {
   icon: React.ReactNode;
@@ -44,6 +47,13 @@ interface LayoutProps {
 
 export const Layout = ({ children, activeTab, setActiveTab, onLogout }: LayoutProps) => {
   const [isSidebarOpen, setIsSidebarOpen] = useState(true);
+  const [currentUser, setCurrentUser] = useState<{ admin_id: string; email: string; name: string } | null>(null);
+
+  useEffect(() => {
+    // Get current user on component mount
+    const user = apiService.getCurrentUser();
+    setCurrentUser(user);
+  }, []);
 
   return (
     <div className="flex h-screen bg-gray-50 overflow-hidden">
@@ -69,6 +79,18 @@ export const Layout = ({ children, activeTab, setActiveTab, onLogout }: LayoutPr
             label={isSidebarOpen ? "Surveys" : ""} 
             active={activeTab === 'surveys'} 
             onClick={() => setActiveTab('surveys')} 
+          />
+          <SidebarItem 
+            icon={<Users size={20} />} 
+            label={isSidebarOpen ? "Users" : ""} 
+            active={activeTab === 'users'} 
+            onClick={() => setActiveTab('users')} 
+          />
+          <SidebarItem 
+            icon={<MessageSquare size={20} />} 
+            label={isSidebarOpen ? "SMS" : ""} 
+            active={activeTab === 'sms'} 
+            onClick={() => setActiveTab('sms')} 
           />
           <SidebarItem 
             icon={<Activity size={20} />} 
@@ -115,21 +137,32 @@ export const Layout = ({ children, activeTab, setActiveTab, onLogout }: LayoutPr
           </div>
 
           <div className="flex items-center space-x-4">
-            <button className="p-2 text-gray-400 hover:text-[#18392b] transition-colors relative">
+            <button 
+              onClick={() => setActiveTab('notifications')}
+              className="p-2 text-gray-400 hover:text-[#18392b] transition-colors relative"
+              title="Notifications"
+            >
               <Bell size={20} />
               <span className="absolute top-2 right-2 w-2 h-2 bg-red-500 rounded-full border-2 border-white"></span>
             </button>
             <div className="h-8 w-px bg-gray-200"></div>
             <div className="flex items-center space-x-3 cursor-pointer group">
               <div className="text-right">
-                <p className="text-sm font-semibold text-gray-800 leading-tight">Admin User</p>
-                <p className="text-xs text-gray-500">Ministry of Health</p>
+                <p className="text-sm font-semibold text-gray-800 leading-tight">
+                  {currentUser?.name || 'Loading...'}
+                </p>
+                <p className="text-xs text-gray-500">
+                  {currentUser?.email || 'Loading...'}
+                </p>
               </div>
-              <img 
-                src="https://images.unsplash.com/photo-1645066928295-2506defde470?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&ixid=M3w3Nzg4Nzd8MHwxfHNlYXJjaHwxfHxwcm9mZXNzaW9uYWwlMjBkb2N0b3IlMjBwcm9maWxlJTIwcG9ydHJhaXR8ZW58MXx8fHwxNzY5NDg2NzgwfDA&ixlib=rb-4.1.0&q=80&w=1080" 
-                alt="Profile" 
-                className="w-10 h-10 rounded-full border border-gray-200"
-              />
+              <div className="relative">
+                <img 
+                  src={`https://ui-avatars.com/api/?name=${encodeURIComponent(currentUser?.name || 'User')}&background=18392b&color=fff&size=40`}
+                  alt="Profile" 
+                  className="w-10 h-10 rounded-full border border-gray-200"
+                />
+                <div className="absolute bottom-0 right-0 w-3 h-3 bg-green-500 rounded-full border-2 border-white"></div>
+              </div>
               <ChevronDown size={16} className="text-gray-400 group-hover:text-gray-600" />
             </div>
           </div>

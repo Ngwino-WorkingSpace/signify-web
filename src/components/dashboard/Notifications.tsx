@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState, useEffect } from 'react';
 import { 
   Send, 
   Clock, 
@@ -9,6 +9,8 @@ import {
   Plus
 } from 'lucide-react';
 
+import { apiService } from '../../services/api';
+
 const notifications = [
   { id: 1, title: 'Weekly Fever Alert', target: 'Volunteers - District A', status: 'sent', delivery: '98%', time: '2026-01-26 08:00' },
   { id: 2, title: 'Vector Check Reminder', target: 'Health Officers', status: 'scheduled', delivery: '-', time: '2026-01-28 09:00' },
@@ -17,6 +19,68 @@ const notifications = [
 ];
 
 export const Notifications = () => {
+  const [notifications, setNotifications] = useState<any[]>([]);
+  const [stats, setStats] = useState<any>(null);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    const fetchNotificationData = async () => {
+      try {
+        const [notificationsData, statsData] = await Promise.all([
+          apiService.getNotifications(),
+          apiService.getNotificationStats()
+        ]);
+
+        // Transform notifications data to match expected format
+        const transformedNotifications = notificationsData.map(notif => ({
+          id: notif.id,
+          title: notif.title,
+          target: notif.target_audience.replace('_', ' ').replace(/\b\w/g, l => l.toUpperCase()),
+          status: notif.status,
+          delivery: notif.delivery_rate ? `${Math.round(notif.delivery_rate * 100)}%` : '-',
+          time: new Date(notif.created_at).toLocaleString('en-US', { 
+            month: '2-digit', 
+            day: '2-digit', 
+            hour: '2-digit', 
+            minute: '2-digit' 
+          })
+        }));
+
+        setNotifications(transformedNotifications);
+        setStats(statsData);
+      } catch (error) {
+        console.error('Failed to fetch notification data:', error);
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    fetchNotificationData();
+  }, []);
+
+  if (loading) {
+    return (
+      <div className="flex items-center justify-center h-64">
+        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-[#18392b]"></div>
+      </div>
+    );
+  }
+
+  const displayNotifications = notifications.length > 0 ? notifications : [
+    { id: 1, title: 'Weekly Fever Alert', target: 'Volunteers - District A', status: 'sent', delivery: '98%', time: '2026-01-26 08:00' },
+    { id: 2, title: 'Vector Check Reminder', target: 'Health Officers', status: 'scheduled', delivery: '-', time: '2026-01-28 09:00' },
+    { id: 3, title: 'Emergency Outbreak Notice', target: 'All Regional Staff', status: 'sent', delivery: '100%', time: '2026-01-24 14:20' },
+    { id: 4, title: 'Submission Deadline', target: 'District Managers', status: 'failed', delivery: '82%', time: '2026-01-23 17:00' },
+  ];
+
+  const displayStats = stats || {
+    total_sent: 15,
+    total_pending: 3,
+    total_failed: 2,
+    delivery_rate: 0.92,
+    gateway_status: 'online',
+    credits_remaining: 42500
+  };
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between">
@@ -35,13 +99,13 @@ export const Notifications = () => {
           <div className="flex items-center justify-between mb-4">
             <h3 className="font-bold text-gray-900">SMS Gateway Status</h3>
             <span className="flex items-center text-xs text-emerald-600 bg-emerald-50 px-2 py-0.5 rounded-full font-bold">
-              ONLINE
+              {displayStats.gateway_status.toUpperCase()}
             </span>
           </div>
           <div className="space-y-3">
             <div className="flex justify-between text-sm">
               <span className="text-gray-500">Credits Remaining</span>
-              <span className="font-bold text-[#18392b]">42,500</span>
+              <span className="font-bold text-[#18392b]">{displayStats.credits_remaining.toLocaleString()}</span>
             </div>
             <div className="w-full bg-gray-100 h-2 rounded-full overflow-hidden">
               <div className="bg-[#18392b] h-full w-3/4"></div>
@@ -63,7 +127,7 @@ export const Notifications = () => {
                 </div>
               ))}
             </div>
-            <span className="text-xs font-medium text-gray-400">+14 Active Rules</span>
+            <span className="text-xs font-medium text-gray-400">+{displayStats.total_pending} Pending Notifications</span>
           </div>
         </div>
 
@@ -82,7 +146,7 @@ export const Notifications = () => {
           <h3 className="font-bold text-gray-900">Recent Notifications</h3>
         </div>
         <div className="divide-y divide-gray-100">
-          {notifications.map((notif) => (
+          {displayNotifications.map((notif) => (
             <div key={notif.id} className="px-6 py-4 flex items-center justify-between hover:bg-gray-50 transition-colors">
               <div className="flex items-center space-x-4">
                 <div className={`p-2 rounded-lg ${

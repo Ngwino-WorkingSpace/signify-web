@@ -20,6 +20,10 @@ import { SurveyManagement } from "./components/dashboard/SurveyManagement";
 import { DataMonitoring } from "./components/dashboard/DataMonitoring";
 import { Analytics } from "./components/dashboard/Analytics";
 import { Notifications } from "./components/dashboard/Notifications";
+import { UsersManagement } from "./components/dashboard/Users";
+import SmsManagement from "./components/dashboard/SmsManagement";
+
+import { apiService, AuthResponse } from "./services/api";
 
 export default function App() {
   const [appView, setAppView] = useState("landing"); 
@@ -27,19 +31,23 @@ export default function App() {
 
   // session persistence
   useEffect(() => {
-    const session = localStorage.getItem("signify_session");
-    if (session === "true") {
+    const token = localStorage.getItem("auth_token");
+    if (token) {
       setAppView("dashboard");
     }
   }, []);
 
-  const handleLogin = () => {
-    localStorage.setItem("signify_session", "true");
+  const handleLogin = (authData: AuthResponse) => {
+    // Store user data in signify_session
+    localStorage.setItem("signify_session", JSON.stringify({
+      admin: authData.admin,
+      loginTime: new Date().toISOString()
+    }));
     setAppView("dashboard");
   };
 
   const handleLogout = () => {
-    localStorage.removeItem("signify_session");
+    apiService.logout();
     setAppView("landing");
   };
 
@@ -49,6 +57,10 @@ export default function App() {
         return <DashboardHome />;
       case "surveys":
         return <SurveyManagement />;
+      case "users":
+        return <UsersManagement />;
+      case "sms":
+        return <SmsManagement />;
       case "monitoring":
         return <DataMonitoring />;
       case "analytics":

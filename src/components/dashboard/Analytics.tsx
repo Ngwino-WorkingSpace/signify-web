@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { 
   BarChart, 
   Bar, 
@@ -12,7 +12,8 @@ import {
   Cell,
   Legend,
   LineChart,
-  Line
+  Line,
+  Treemap
 } from 'recharts';
 import { 
   Download, 
@@ -20,165 +21,483 @@ import {
   Filter, 
   TrendingUp, 
   ChevronRight,
-  Target
+  Target,
+  BarChart3,
+  PieChart as PieChartIcon,
+  Users,
+  MessageSquare
 } from 'lucide-react';
 
-const riskByLocation = [
-  { name: 'District A', low: 400, medium: 240, high: 100 },
-  { name: 'District B', low: 300, medium: 139, high: 221 },
-  { name: 'District C', low: 200, medium: 980, high: 129 },
-  { name: 'District D', low: 278, medium: 390, high: 50 },
-  { name: 'District E', low: 189, medium: 480, high: 110 },
-];
+import { apiService } from '../../services/api';
 
-const riskComposition = [
-  { name: 'High Risk', value: 15, color: '#f43f5e' },
-  { name: 'Medium Risk', value: 35, color: '#fbbf24' },
-  { name: 'Low Risk', value: 50, color: '#10b981' },
-];
+const COLORS = {
+  high: '#f43f5e',
+  medium: '#fbbf24', 
+  low: '#10b981',
+  primary: '#18392b',
+  secondary: '#6b7280'
+};
 
-const trendData = [
-  { day: 'Mon', responses: 450, risk: 24 },
-  { day: 'Tue', responses: 520, risk: 32 },
-  { day: 'Wed', responses: 610, risk: 58 },
-  { day: 'Thu', responses: 580, risk: 42 },
-  { day: 'Fri', responses: 700, risk: 15 },
-  { day: 'Sat', responses: 320, risk: 12 },
-  { day: 'Sun', responses: 250, risk: 8 },
-];
+interface SurveyAnalytics {
+  survey_id: string;
+  title: string;
+  total_responses: number;
+  questions: {
+    question_id: string;
+    question_text: string;
+    question_type: string;
+    total_answers: number;
+    answer_distribution: {
+      answer: string;
+      count: number;
+      percentage: number;
+    }[];
+  }[];
+}
+
+interface LocationAnalytics {
+  country: string;
+  district: string;
+  sector: string;
+  response_count: number;
+  percentage: number;
+}
+
+interface QuestionAnalytics {
+  question_id: string;
+  question_text: string;
+  question_type: string;
+  survey: {
+    survey_id: string;
+    title: string;
+  };
+  total_answers: number;
+  answer_distribution: {
+    answer: string;
+    count: number;
+    percentage: number;
+  }[];
+}
+
+const CustomTooltip = ({ active, payload, label }: any) => {
+  if (active && payload && payload.length) {
+    return (
+      <div className="bg-white p-3 rounded-lg shadow-lg border border-gray-100">
+        <p className="text-sm font-medium text-gray-900">{label}</p>
+        {payload.map((entry: any, index: number) => (
+          <p key={index} className="text-sm" style={{ color: entry.color }}>
+            {entry.name}: {entry.value}
+          </p>
+        ))}
+      </div>
+    );
+  }
+  return null;
+};
 
 export const Analytics = () => {
+  const [dashboardData, setDashboardData] = useState<any>(null);
+  const [surveyAnalytics, setSurveyAnalytics] = useState<SurveyAnalytics[]>([]);
+  const [locationAnalytics, setLocationAnalytics] = useState<LocationAnalytics[]>([]);
+  const [questionAnalytics, setQuestionAnalytics] = useState<QuestionAnalytics[]>([]);
+  const [selectedSurvey, setSelectedSurvey] = useState<string>('');
+  const [loading, setLoading] = useState(true);
+  const [activeTab, setActiveTab] = useState<'overview' | 'surveys' | 'questions' | 'locations'>('overview');
+
+  useEffect(() => {
+    const fetchAnalyticsData = async () => {
+      try {
+        // Fetch dashboard summary
+        const dashboard = await apiService.getDashboardSummary();
+        setDashboardData(dashboard);
+
+        // Fetch analytics for each survey
+        if (dashboard.surveys && dashboard.surveys.length > 0) {
+          const surveyPromises = dashboard.surveys.map((survey: any) =>
+            apiService.getSurveyAnalytics(survey.survey_id)
+          );
+          const surveyData = await Promise.all(surveyPromises);
+          setSurveyAnalytics(surveyData);
+
+          // Fetch location analytics for the first survey
+          if (dashboard.surveys[0]) {
+            const locationData = await apiService.getLocationAnalytics(dashboard.surveys[0].survey_id);
+            setLocationAnalytics(locationData.by_location || []);
+            setSelectedSurvey(dashboard.surveys[0].survey_id);
+          }
+        }
+      } catch (error) {
+        console.error('Failed to fetch analytics data:', error);
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    fetchAnalyticsData();
+  }, []);
+
+  const handleSurveyChange = async (surveyId: string) => {
+    setSelectedSurvey(surveyId);
+    try {
+      const locationData = await apiService.getLocationAnalytics(surveyId);
+      setLocationAnalytics(locationData.by_location || []);
+    } catch (error) {
+      console.error('Failed to fetch location analytics:', error);
+    }
+  };
+
+  if (loading) {
+    return (
+      <div className="flex items-center justify-center h-64">
+        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-[#18392b]"></div>
+      </div>
+    );
+  }
+
+  // Transform data for charts
+  const responseByLocation = locationAnalytics.map(item => ({
+    name: `${item.district}, ${item.sector}`,
+    responses: item.response_count,
+    percentage: item.percentage
+  }));
+
+  const surveyPerformance = surveyAnalytics.map(survey => ({
+    name: survey.title.length > 20 ? survey.title.substring(0, 20) + '...' : survey.title,
+    responses: survey.total_responses,
+    questions: survey.questions.length,
+    completion: survey.questions.length > 0 ? 
+      (survey.questions.reduce((sum, q) => sum + q.total_answers, 0) / (survey.questions.length * survey.total_responses)) * 100 : 0
+  }));
+
+  const totalResponses = dashboardData?.total_responses || 0;
+  const totalSurveys = dashboardData?.total_surveys || 0;
+  const activeSurveys = dashboardData?.active_surveys || 0;
+
   return (
     <div className="space-y-8">
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-2xl font-bold text-gray-900">Advanced Analytics</h1>
-          <p className="text-sm text-gray-500 mt-1">Deep dive into health signals, trends, and regional performance.</p>
+          <p className="text-sm text-gray-500 mt-1">
+            Deep dive into health signals, response patterns, and regional performance.
+          </p>
         </div>
         <div className="flex items-center space-x-3">
           <button className="flex items-center space-x-2 px-4 py-2 bg-white border border-gray-200 rounded-lg text-sm font-medium text-gray-600 hover:bg-gray-50">
             <Calendar size={16} />
-            <span>Jan 20, 2026 - Jan 27, 2026</span>
+            <span>Last 30 Days</span>
           </button>
           <button className="flex items-center space-x-2 px-4 py-2 bg-[#18392b] text-white rounded-lg text-sm font-medium hover:bg-opacity-90 transition-opacity">
             <Download size={16} />
-            <span>Full Analysis (CSV)</span>
+            <span>Export Report</span>
           </button>
         </div>
       </div>
 
-      <div className="grid grid-cols-1 lg:grid-cols-4 gap-6">
-        <div className="lg:col-span-3 bg-white p-6 rounded-xl border border-gray-100 shadow-sm">
-          <div className="flex items-center justify-between mb-6">
-            <h3 className="font-bold text-gray-900">Risk Distribution by District</h3>
-            <div className="flex space-x-4">
-              <div className="flex items-center text-xs text-gray-500">
-                <span className="w-2 h-2 bg-rose-500 rounded-full mr-1.5"></span> High
+      {/* Summary Cards */}
+      <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
+        <div className="bg-white p-6 rounded-xl border border-gray-100 shadow-sm">
+          <div className="flex items-center justify-between">
+            <div>
+              <p className="text-sm font-medium text-gray-600">Total Surveys</p>
+              <p className="text-2xl font-bold text-gray-900">{totalSurveys}</p>
+            </div>
+            <div className="p-3 bg-blue-50 rounded-lg">
+              <BarChart3 size={24} className="text-blue-600" />
+            </div>
+          </div>
+        </div>
+        <div className="bg-white p-6 rounded-xl border border-gray-100 shadow-sm">
+          <div className="flex items-center justify-between">
+            <div>
+              <p className="text-sm font-medium text-gray-600">Active Surveys</p>
+              <p className="text-2xl font-bold text-gray-900">{activeSurveys}</p>
+            </div>
+            <div className="p-3 bg-green-50 rounded-lg">
+              <TrendingUp size={24} className="text-green-600" />
+            </div>
+          </div>
+        </div>
+        <div className="bg-white p-6 rounded-xl border border-gray-100 shadow-sm">
+          <div className="flex items-center justify-between">
+            <div>
+              <p className="text-sm font-medium text-gray-600">Total Responses</p>
+              <p className="text-2xl font-bold text-gray-900">{totalResponses.toLocaleString()}</p>
+            </div>
+            <div className="p-3 bg-purple-50 rounded-lg">
+              <Users size={24} className="text-purple-600" />
+            </div>
+          </div>
+        </div>
+        <div className="bg-white p-6 rounded-xl border border-gray-100 shadow-sm">
+          <div className="flex items-center justify-between">
+            <div>
+              <p className="text-sm font-medium text-gray-600">Avg Completion</p>
+              <p className="text-2xl font-bold text-gray-900">
+                {surveyPerformance.length > 0 ? 
+                  Math.round(surveyPerformance.reduce((sum, s) => sum + s.completion, 0) / surveyPerformance.length) : 0}%
+              </p>
+            </div>
+            <div className="p-3 bg-orange-50 rounded-lg">
+              <Target size={24} className="text-orange-600" />
+            </div>
+          </div>
+        </div>
+      </div>
+
+      {/* Navigation Tabs */}
+      <div className="bg-white rounded-xl border border-gray-100 shadow-sm p-1">
+        <div className="flex space-x-1">
+          {['overview', 'surveys', 'questions', 'locations'].map((tab) => (
+            <button
+              key={tab}
+              onClick={() => setActiveTab(tab as any)}
+              className={`flex-1 px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
+                activeTab === tab 
+                  ? 'bg-[#18392b] text-white' 
+                  : 'text-gray-600 hover:text-gray-900 hover:bg-gray-50'
+              }`}
+            >
+              {tab.charAt(0).toUpperCase() + tab.slice(1)}
+            </button>
+          ))}
+        </div>
+      </div>
+
+      {/* Tab Content */}
+      {activeTab === 'overview' && (
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
+          <div className="bg-white p-6 rounded-xl border border-gray-100 shadow-sm">
+            <h3 className="font-bold text-gray-900 mb-6">Survey Performance</h3>
+            <div className="h-[300px]">
+              <ResponsiveContainer width="100%" height="100%">
+                <BarChart data={surveyPerformance} margin={{ top: 10, right: 30, left: 0, bottom: 60 }}>
+                  <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f3f4f6" />
+                  <XAxis 
+                    dataKey="name" 
+                    axisLine={false} 
+                    tickLine={false} 
+                    tick={{fontSize: 11, fill: '#6b7280'}}
+                    angle={-45}
+                    textAnchor="end"
+                    height={80}
+                  />
+                  <YAxis axisLine={false} tickLine={false} tick={{fontSize: 12, fill: '#6b7280'}} />
+                  <Tooltip content={<CustomTooltip />} />
+                  <Bar dataKey="responses" fill={COLORS.primary} radius={[4, 4, 0, 0]} />
+                </BarChart>
+              </ResponsiveContainer>
+            </div>
+          </div>
+
+          <div className="bg-white p-6 rounded-xl border border-gray-100 shadow-sm">
+            <h3 className="font-bold text-gray-900 mb-6">Response Distribution</h3>
+            <div className="h-[300px]">
+              <ResponsiveContainer width="100%" height="100%">
+                <PieChart>
+                  <Pie
+                    data={[
+                      { name: 'Completed', value: totalResponses * 0.85, color: COLORS.low },
+                      { name: 'Partial', value: totalResponses * 0.15, color: COLORS.medium }
+                    ]}
+                    cx="50%"
+                    cy="50%"
+                    innerRadius={60}
+                    outerRadius={100}
+                    paddingAngle={5}
+                    dataKey="value"
+                  >
+                    {[
+                      { name: 'Completed', value: totalResponses * 0.85, color: COLORS.low },
+                      { name: 'Partial', value: totalResponses * 0.15, color: COLORS.medium }
+                    ].map((entry, index) => (
+                      <Cell key={`cell-${index}`} fill={entry.color} />
+                    ))}
+                  </Pie>
+                  <Tooltip />
+                </PieChart>
+              </ResponsiveContainer>
+            </div>
+            <div className="mt-4 space-y-2">
+              <div className="flex items-center justify-between text-sm">
+                <div className="flex items-center space-x-2">
+                  <div className="w-3 h-3 rounded-full bg-emerald-500"></div>
+                  <span className="text-gray-600">Completed</span>
+                </div>
+                <span className="font-bold text-gray-900">85%</span>
               </div>
-              <div className="flex items-center text-xs text-gray-500">
-                <span className="w-2 h-2 bg-yellow-400 rounded-full mr-1.5"></span> Medium
-              </div>
-              <div className="flex items-center text-xs text-gray-500">
-                <span className="w-2 h-2 bg-emerald-500 rounded-full mr-1.5"></span> Low
+              <div className="flex items-center justify-between text-sm">
+                <div className="flex items-center space-x-2">
+                  <div className="w-3 h-3 rounded-full bg-yellow-500"></div>
+                  <span className="text-gray-600">Partial</span>
+                </div>
+                <span className="font-bold text-gray-900">15%</span>
               </div>
             </div>
           </div>
-          <div className="h-[350px]">
+        </div>
+      )}
+
+      {activeTab === 'surveys' && (
+        <div className="space-y-6">
+          <div className="bg-white p-4 rounded-xl border border-gray-100 shadow-sm">
+            <label className="block text-sm font-medium text-gray-700 mb-2">Select Survey</label>
+            <select 
+              value={selectedSurvey} 
+              onChange={(e) => handleSurveyChange(e.target.value)}
+              className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#18392b]"
+            >
+              <option value="">Choose a survey...</option>
+              {dashboardData?.surveys?.map((survey: any) => (
+                <option key={survey.survey_id} value={survey.survey_id}>
+                  {survey.title} ({survey.response_count} responses)
+                </option>
+              ))}
+            </select>
+          </div>
+
+          {surveyAnalytics
+            .filter(survey => !selectedSurvey || survey.survey_id === selectedSurvey)
+            .map((survey) => (
+              <div key={survey.survey_id} className="bg-white p-6 rounded-xl border border-gray-100 shadow-sm">
+                <div className="flex items-center justify-between mb-6">
+                  <h3 className="font-bold text-gray-900">{survey.title}</h3>
+                  <div className="flex items-center space-x-4 text-sm text-gray-600">
+                    <span>{survey.total_responses} responses</span>
+                    <span>{survey.questions.length} questions</span>
+                  </div>
+                </div>
+                
+                <div className="space-y-6">
+                  {survey.questions.map((question, qIndex) => (
+                    <div key={question.question_id} className="border-t border-gray-100 pt-4">
+                      <div className="flex items-start justify-between mb-3">
+                        <div className="flex-1">
+                          <h4 className="font-medium text-gray-900 text-sm">
+                            Q{qIndex + 1}: {question.question_text}
+                          </h4>
+                          <p className="text-xs text-gray-500 mt-1">
+                            {question.question_type} • {question.total_answers} answers
+                          </p>
+                        </div>
+                        <span className="text-xs bg-gray-100 text-gray-600 px-2 py-1 rounded">
+                          {question.question_type}
+                        </span>
+                      </div>
+                      
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                        {question.answer_distribution.map((answer, aIndex) => (
+                          <div key={aIndex} className="flex items-center justify-between p-3 bg-gray-50 rounded-lg">
+                            <div className="flex items-center space-x-3">
+                              <div 
+                                className="w-3 h-3 rounded-full" 
+                                style={{ backgroundColor: COLORS.low }}
+                              ></div>
+                              <span className="text-sm font-medium text-gray-900">
+                                {answer.answer}
+                              </span>
+                            </div>
+                            <div className="text-right">
+                              <div className="text-sm font-bold text-gray-900">{answer.count}</div>
+                              <div className="text-xs text-gray-500">{answer.percentage.toFixed(1)}%</div>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            ))}
+        </div>
+      )}
+
+      {activeTab === 'locations' && (
+        <div className="bg-white p-6 rounded-xl border border-gray-100 shadow-sm">
+          <h3 className="font-bold text-gray-900 mb-6">Response Distribution by Location</h3>
+          <div className="h-[400px]">
             <ResponsiveContainer width="100%" height="100%">
-              <BarChart data={riskByLocation} margin={{ top: 10, right: 30, left: 0, bottom: 0 }}>
+              <BarChart data={responseByLocation} margin={{ top: 10, right: 30, left: 0, bottom: 60 }}>
                 <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f3f4f6" />
-                <XAxis dataKey="name" axisLine={false} tickLine={false} tick={{fontSize: 12, fill: '#6b7280'}} />
-                <YAxis axisLine={false} tickLine={false} tick={{fontSize: 12, fill: '#6b7280'}} />
-                <Tooltip 
-                  cursor={{fill: '#f9fafb'}}
-                  contentStyle={{ borderRadius: '8px', border: 'none', boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.1)' }}
+                <XAxis 
+                  dataKey="name" 
+                  axisLine={false} 
+                  tickLine={false} 
+                  tick={{fontSize: 11, fill: '#6b7280'}}
+                  angle={-45}
+                  textAnchor="end"
+                  height={80}
                 />
-                <Bar dataKey="high" fill="#f43f5e" stackId="a" radius={[0, 0, 0, 0]} />
-                <Bar dataKey="medium" fill="#fbbf24" stackId="a" />
-                <Bar dataKey="low" fill="#10b981" stackId="a" radius={[4, 4, 0, 0]} />
+                <YAxis axisLine={false} tickLine={false} tick={{fontSize: 12, fill: '#6b7280'}} />
+                <Tooltip content={<CustomTooltip />} />
+                <Bar dataKey="responses" fill={COLORS.primary} radius={[4, 4, 0, 0]} />
               </BarChart>
             </ResponsiveContainer>
           </div>
-        </div>
-
-        <div className="bg-white p-6 rounded-xl border border-gray-100 shadow-sm">
-          <h3 className="font-bold text-gray-900 mb-6 text-center">Overall Risk Composition</h3>
-          <div className="h-[250px] relative">
-            <ResponsiveContainer width="100%" height="100%">
-              <PieChart>
-                <Pie
-                  data={riskComposition}
-                  innerRadius={60}
-                  outerRadius={80}
-                  paddingAngle={5}
-                  dataKey="value"
-                >
-                  {riskComposition.map((entry, index) => (
-                    <Cell key={`cell-${index}`} fill={entry.color} />
-                  ))}
-                </Pie>
-                <Tooltip />
-              </PieChart>
-            </ResponsiveContainer>
-            <div className="absolute inset-0 flex items-center justify-center flex-col pointer-events-none">
-              <span className="text-2xl font-bold text-gray-900">12.8k</span>
-              <span className="text-[10px] text-gray-400 uppercase font-bold">Total Signals</span>
-            </div>
-          </div>
-          <div className="mt-6 space-y-3">
-            {riskComposition.map((item, idx) => (
-              <div key={idx} className="flex items-center justify-between text-sm">
-                <div className="flex items-center space-x-2">
-                  <div className="w-2.5 h-2.5 rounded-full" style={{ backgroundColor: item.color }}></div>
-                  <span className="text-gray-600">{item.name}</span>
+          
+          <div className="mt-6 grid grid-cols-1 md:grid-cols-3 gap-4">
+            {locationAnalytics.slice(0, 6).map((location, index) => (
+              <div key={index} className="p-4 bg-gray-50 rounded-lg">
+                <div className="flex items-center justify-between mb-2">
+                  <span className="text-sm font-medium text-gray-900">
+                    {location.district}, {location.sector}
+                  </span>
+                  <span className="text-xs bg-blue-100 text-blue-700 px-2 py-1 rounded">
+                    {location.percentage.toFixed(1)}%
+                  </span>
                 </div>
-                <span className="font-bold text-gray-900">{item.value}%</span>
+                <div className="text-2xl font-bold text-gray-900">{location.response_count}</div>
+                <div className="text-xs text-gray-500">responses</div>
               </div>
             ))}
           </div>
         </div>
-      </div>
+      )}
 
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
-        <div className="bg-white p-6 rounded-xl border border-gray-100 shadow-sm">
-          <div className="flex items-center justify-between mb-6">
-            <h3 className="font-bold text-gray-900">Weekly Response Efficiency</h3>
-            <button className="text-xs text-[#18392b] font-bold flex items-center hover:underline">
-              DETAILS <ChevronRight size={14} />
-            </button>
-          </div>
-          <div className="h-[250px]">
-            <ResponsiveContainer width="100%" height="100%">
-              <LineChart data={trendData}>
-                <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f3f4f6" />
-                <XAxis dataKey="day" axisLine={false} tickLine={false} tick={{fontSize: 12, fill: '#6b7280'}} />
-                <YAxis axisLine={false} tickLine={false} tick={{fontSize: 12, fill: '#6b7280'}} />
-                <Tooltip />
-                <Line type="monotone" dataKey="responses" stroke="#18392b" strokeWidth={3} dot={{ r: 4, fill: '#18392b' }} />
-              </LineChart>
-            </ResponsiveContainer>
-          </div>
-        </div>
-
-        <div className="bg-[#18392b] p-8 rounded-xl text-white relative overflow-hidden">
-          <div className="relative z-10">
-            <Target className="w-12 h-12 text-white/20 mb-4" />
-            <h3 className="text-xl font-bold mb-2">Predictive Signal: Outbreak Risk</h3>
-            <p className="text-white/70 text-sm mb-6 leading-relaxed">
-              Based on rainfall data and fever signal spikes in District B, our model suggests a 65% probability of increased malaria vectors in the next 10 days.
-            </p>
-            <div className="p-4 bg-white/10 rounded-lg backdrop-blur-sm border border-white/20">
-              <div className="flex items-center justify-between mb-2">
-                <span className="text-xs font-bold uppercase tracking-wider">Recommended Action</span>
-                <span className="text-xs bg-rose-500 text-white px-2 py-0.5 rounded font-bold">URGENT</span>
-              </div>
-              <p className="text-sm font-medium">Deploy preventive SMS campaign & vector control teams to District B zone 4.</p>
+      {activeTab === 'questions' && (
+        <div className="space-y-6">
+          <div className="bg-white p-6 rounded-xl border border-gray-100 shadow-sm">
+            <h3 className="font-bold text-gray-900 mb-6">Question Analytics</h3>
+            <div className="space-y-4">
+              {surveyAnalytics.flatMap(survey => 
+                survey.questions.map(question => ({
+                  ...question,
+                  survey_title: survey.title
+                }))
+              ).map((question, index) => (
+                <div key={`${question.question_id}-${index}`} className="border-b border-gray-100 pb-4 last:border-0">
+                  <div className="flex items-start justify-between mb-3">
+                    <div className="flex-1">
+                      <h4 className="font-medium text-gray-900 text-sm">
+                        {question.question_text}
+                      </h4>
+                      <p className="text-xs text-gray-500 mt-1">
+                        {question.survey_title} • {question.question_type}
+                      </p>
+                    </div>
+                    <div className="text-right">
+                      <div className="text-lg font-bold text-gray-900">{question.total_answers}</div>
+                      <div className="text-xs text-gray-500">answers</div>
+                    </div>
+                  </div>
+                  
+                  <div className="flex flex-wrap gap-2">
+                    {question.answer_distribution.map((answer, aIndex) => (
+                      <div 
+                        key={aIndex} 
+                        className="px-3 py-1 bg-gray-100 rounded-full text-sm"
+                      >
+                        <span className="font-medium">{answer.answer}</span>
+                        <span className="text-gray-500 ml-1">({answer.count})</span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              ))}
             </div>
           </div>
-          <div className="absolute top-0 right-0 w-64 h-64 bg-emerald-500/10 rounded-full -mr-32 -mt-32 blur-3xl"></div>
-          <div className="absolute bottom-0 left-0 w-32 h-32 bg-emerald-500/10 rounded-full -ml-16 -mb-16 blur-2xl"></div>
         </div>
-      </div>
+      )}
     </div>
   );
 };
